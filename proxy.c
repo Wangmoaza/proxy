@@ -11,6 +11,7 @@
 #define MAX_OBJECT_SIZE 102400
 
 /* function prototypes */
+void *thread(void *vargp);
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
@@ -22,29 +23,53 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64;
 
 int main(int argc, char **argv) 
 {
-    int listenfd, connfd;
+    int listenfd, *connfdp;
     char hostname[MAXLINE], port[MAXLINE];
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    pthread_t tid;
+
+	/* ignore SIGPIPE signal */
+	Signal(SIGPIPE, SIG_IGN);
 
     /* Check command line args */
-    if (argc != 2) {
-	fprintf(stderr, "usage: %s <port>\n", argv[0]);
-	exit(1);
+    if (argc != 2) 
+    {
+		fprintf(stderr, "usage: %s <port>\n", argv[0]);
+		exit(1);
     }
 
-    listenfd = Open_listenfd(argv[1]);
-    while (1) {
-	clientlen = sizeof(clientaddr);
-	connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen); //line:netp:tiny:accept
-        Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
-                    port, MAXLINE, 0);
-        printf("Accepted connection from (%s, %s)\n", hostname, port);
-	doit(connfd);                                             //line:netp:tiny:doit
-	Close(connfd);                                            //line:netp:tiny:close
-    }
+    /* open listening socket descriptor */
+    listenfd = Open_listenfd(argv[1]); //argv[1]: port
+
+    while (1) 
+    {
+    	/* connection socekt descriptor */
+		clientlen = sizeof(clientaddr);
+		connfdp = Malloc(sizeof(int));
+		*connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+		
+		Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
+		printf("Accepted connection from (%s, %s)\n", hostname, port);
+		/* details done in thread routine */
+		Pthread_create(&tid, NULL, thread, connfdp); 
+	}
+
+	return 0;
 }
-/* $end tinymain */
+
+/* 
+ * thread - thread routine 
+ */
+void *thread(void *vargp)
+{
+	int connfd = *((int *)vargp);
+	Pthread_detach(pthread_self());
+	Free(vargp);
+	doit(connfd);
+	Close(connfd);
+	return NULL;
+}
 
 /*
  * doit - handle one HTTP request/response transaction
