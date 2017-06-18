@@ -38,7 +38,7 @@ int main(int argc, char **argv)
     int listenfd, *connfdp;
     char hostname[MAXLINE], port[MAXLINE];
     struct sockaddr_storage clientaddr;
-    socklen_t clientlen = sizeof(clinetaddr);
+    socklen_t clientlen = sizeof(clientaddr);
     pthread_t tid;
 
 	Signal(SIGPIPE, SIG_IGN); /* ignore SIGPIPE signal */
