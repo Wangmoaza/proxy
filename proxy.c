@@ -5,21 +5,30 @@
 
 #include <stdio.h>
 #include "csapp.h"
+#include "pthread.h"
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+#define VERBOSE 1
+#define CACHE_ENABLE 0
 
 /* function prototypes */
 void *thread(void *vargp);
-void doit(int fd);
+void proxy(int fd);
 void read_requesthdrs(rio_t *rp);
-int parse_uri(char *uri, char *filename, char *cgiargs);
+int parse_uri(char *uri, char **host, char **port, char **path);
 void clienterror(int fd, char *cause, char *errnum, 
 		 char *shortmsg, char *longmsg);
 
+
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
+static const char *conn_hdr = "Connection: close\r\n";
+static const char *proxy_hdr = "Proxy-Connection: close\r\n";
+
+sem_t mutex;
+
 
 int main(int argc, char **argv) 
 {
@@ -29,8 +38,11 @@ int main(int argc, char **argv)
     struct sockaddr_storage clientaddr;
     pthread_t tid;
 
-	/* ignore SIGPIPE signal */
-	Signal(SIGPIPE, SIG_IGN);
+	Signal(SIGPIPE, SIG_IGN); /* ignore SIGPIPE signal */
+	Sem_init(&mutex, 0, 1); /* initialize mutex */
+
+    if (VERBOSE)
+    	printf("Server starting\n");
 
     /* Check command line args */
     if (argc != 2) 
@@ -50,7 +62,8 @@ int main(int argc, char **argv)
 		*connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		
 		Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
-		printf("Accepted connection from (%s, %s)\n", hostname, port);
+		if (VERBOSE)
+			printf("Accepted connection from (%s, %s)\n", hostname, port);
 		/* details done in thread routine */
 		Pthread_create(&tid, NULL, thread, connfdp); 
 	}
@@ -66,60 +79,117 @@ void *thread(void *vargp)
 	int connfd = *((int *)vargp);
 	Pthread_detach(pthread_self());
 	Free(vargp);
-	doit(connfd);
+	proxy(connfd);
 	Close(connfd);
 	return NULL;
 }
 
 /*
- * doit - handle one HTTP request/response transaction
+ * proxy - serve as proxy
+ *         read request from client and send it to server
+ *         read the server's response and forward it to client
+ *         1. open socket to server
+ *         2. read request from client and concatenate request headers
+ *         3-1. if request object is in cache, just resend it END
+ *         3-2. send request to server
+ *         4. if response is cacheable, cache it in memory
+ *         5. send response to client
  */
 /* $begin doit */
-void doit(int fd) 
+void proxy(int connfd) 
 {
-    int is_static;
-    struct stat sbuf;
+	/* connfd : proxy acting as server to client
+	 * clientfd : proxy acting as client to server running on host
+	 */
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    char filename[MAXLINE], cgiargs[MAXLINE];
-    rio_t rio;
+    char request[MAXLINE];
+    char host[MAXLINE], port[MAXLINE], path[MAXLINE];
+    /* rio from server, rio from client */
+    rio_t rio_server, rio_client; 
+    int clientfd;
+    int request_len, n, sum;
 
-    /* Read request line and headers */
-    Rio_readinitb(&rio, fd);
-    if (!Rio_readlineb(&rio, buf, MAXLINE))  //line:netp:doit:readrequest
+    /* read and parse request line */
+	Rio_readinitb(&rio_client, connfd); // need to forward it to server
+	Rio_readlineb(&rio_client, buf, MAXLINE);
+
+	if (strcmp(buf, "") == 0)
+		return;
+
+	sscanf(buf, "%s %s %s", method, uri, version);
+    memcpy(version, "HTTP/1.0"); // forward as HTTP/1.0 request
+
+    /* only handle GET reqeust */
+    if (strcasecmp(method, "GET")) 
+    { 
+        clienterror(connfd, method, "501", "Not Implemented", NULL);
         return;
-    printf("%s", buf);
-    sscanf(buf, "%s %s %s", method, uri, version);       //line:netp:doit:parserequest
-    if (strcasecmp(method, "GET")) {                     //line:netp:doit:beginrequesterr
-        clienterror(fd, method, "501", "Not Implemented",
-                    "Tiny does not implement this method");
-        return;
-    }                                                    //line:netp:doit:endrequesterr
-    read_requesthdrs(&rio);                              //line:netp:doit:readrequesthdrs
-
-    /* Parse URI from GET request */
-    is_static = parse_uri(uri, filename, cgiargs);       //line:netp:doit:staticcheck
-    if (stat(filename, &sbuf) < 0) {                     //line:netp:doit:beginnotfound
-	clienterror(fd, filename, "404", "Not found",
-		    "Tiny couldn't find this file");
-	return;
-    }                                                    //line:netp:doit:endnotfound
-
-    if (is_static) { /* Serve static content */          
-	if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) { //line:netp:doit:readable
-	    clienterror(fd, filename, "403", "Forbidden",
-			"Tiny couldn't read the file");
-	    return;
-	}
-	serve_static(fd, filename, sbuf.st_size);        //line:netp:doit:servestatic
     }
-    else { /* Serve dynamic content */
-	if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) { //line:netp:doit:executable
-	    clienterror(fd, filename, "403", "Forbidden",
-			"Tiny couldn't run the CGI program");
-	    return;
-	}
-	serve_dynamic(fd, filename, cgiargs);            //line:netp:doit:servedynamic
+
+    /* parse uri */
+    if (!parse_uri(uri, &host, &port, &path)) 
+    {
+		clienterror(connfd, uri, "400", "Bad Request", "could not parse request");
+		return;
     }
+
+	if (VERBOSE)
+		printf("host: %s\nport: %s\npath: %s\n", host, port, path);
+	
+	sprintf(request, "%s %s %s\r\n", method, uri, version);
+
+	/* 1. open socket to server
+	 * establishes connection with a server running on host listening on port*/
+	clientfd = Open_clientfd(host, port);  
+	Rio_readinitb(&rio_server, clientfd);
+
+	/* 2. read request from client and concatenate request headers */
+	Rio_readlineb(&rio_client, buf, MAXLINE);
+	while (strcmp(buf, "\r\n")) 
+	{
+		if (startswith(buf, "User-Agent"))
+		{
+			strcat(request, user_agent_hdr);
+		}
+		else if (startswith(buf, "Connection")) 
+		{
+			strcat(request, conn_hdr);
+		}
+		else if (startswith(buf, "Proxy-Connection"))
+		{
+			strcat(request, proxy_hdr);
+		}
+		else
+		{
+			strcat(request, buf);
+		}
+		Rio_readlineb(&rio_client, buf, MAXLINE); // read next line
+	}
+
+	/* 3-1. if request object is in cache, just resend it END */
+	if (CACHE_ENABLE)
+	{
+		continue;
+	}
+
+	/* 3-2. send request to server */
+	request_len = strlen(request);
+	Rio_writen(clientfd, request, request_len);
+
+	/* 4. if response is cacheable, cache it in memory */
+	/* 5. send response to client */
+	sum = 0;
+	while ((n = Rio_readlineb(&rio_server, buf, MAXLINE)) > 0)
+	{
+		sum += n;
+		Rio_writen(connfd, buf, n);
+	}
+
+	if (VERBOSE)
+	{
+		printf("Proxy forwarded %d bytes server resposne to client\n", sum);
+	}
+
 }
 /* $end doit */
 
@@ -133,44 +203,58 @@ void read_requesthdrs(rio_t *rp)
 
     Rio_readlineb(rp, buf, MAXLINE);
     printf("%s", buf);
-    while(strcmp(buf, "\r\n")) {          //line:netp:readhdrs:checkterm
-	Rio_readlineb(rp, buf, MAXLINE);
-	printf("%s", buf);
+    while(strcmp(buf, "\r\n")) 
+    {
+		Rio_readlineb(rp, buf, MAXLINE);
+		printf("%s", buf);
     }
     return;
 }
 /* $end read_requesthdrs */
 
 /*
- * parse_uri - parse URI into filename and CGI args
- *             return 0 if dynamic content, 1 if static
+ * parse_uri - parse URI into host, port, path
+ *             return 1 on normal, 0 on error
+ *             uri is in the format
+ *             http://{host}:{port}/{path}
+ *             http://{host}/{path}
  */
 /* $begin parse_uri */
-int parse_uri(char *uri, char *filename, char *cgiargs) 
+int parse_uri(char *uri, char **host, char **port, char **path) 
 {
-    char *ptr;
+    char *ptr = uri;
+    char *saveptr;
 
-    if (!strstr(uri, "cgi-bin")) {  /* Static content */ //line:netp:parseuri:isstatic
-	strcpy(cgiargs, "");                             //line:netp:parseuri:clearcgi
-	strcpy(filename, ".");                           //line:netp:parseuri:beginconvert1
-	strcat(filename, uri);                           //line:netp:parseuri:endconvert1
-	if (uri[strlen(uri)-1] == '/')                   //line:netp:parseuri:slashcheck
-	    strcat(filename, "home.html");               //line:netp:parseuri:appenddefault
-	return 1;
-    }
-    else {  /* Dynamic content */                        //line:netp:parseuri:isdynamic
-	ptr = index(uri, '?');                           //line:netp:parseuri:beginextract
-	if (ptr) {
-	    strcpy(cgiargs, ptr+1);
-	    *ptr = '\0';
-	}
-	else 
-	    strcpy(cgiargs, "");                         //line:netp:parseuri:endextract
-	strcpy(filename, ".");                           //line:netp:parseuri:beginconvert2
-	strcat(filename, uri);                           //line:netp:parseuri:endconvert2
-	return 0;
-    }
+    if (startswith(ptr, "http://"))
+    	ptr += 7;
+
+    *host = strtok_r(ptr, "/", &saveptr);
+    *path = strtok_r(NULL, "/", &saveptr);
+
+    strtok_r(host, ":", &saveptr);
+    *port = strtok_r(NULL, ":", &saveptr);
+
+    if ((*host == NULL) || (*path == NULL))
+    	return 0;
+
+    /* prepend path with '/' for HTTP request */
+    char *prefix = "/";
+    size_t len = strlen(prefix);
+    memmove(*path + len, *path, strlen(*path) + 1);
+    memcpy(*path, prefix, len);
+
+    return 1;
 }
+
+/*
+ * startswith - return nonzero if target starts with prefix
+ */
+int startswith(const char *target, const char *prefix)
+{
+	int prefixlen = strlen(prefix)
+	return !strncmp(target, prefix, prefixlen);
+}
+
 /* $end parse_uri */
 
 /*
