@@ -17,7 +17,7 @@
 void *thread(void *vargp);
 void proxy(int fd);
 void read_requesthdrs(rio_t *rp);
-int parse_uri(char *uri, char **host, char **port, char **path);
+int parse_uri(char *uri, char *host, int *portp, char *path);
 void clienterror(int fd, char *cause, char *errnum, 
 		 char *shortmsg, char *longmsg);
 int startswith(const char *target, const char *prefix);
@@ -27,6 +27,8 @@ int startswith(const char *target, const char *prefix);
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 static const char *conn_hdr = "Connection: close\r\n";
 static const char *proxy_hdr = "Proxy-Connection: close\r\n";
+static const char *host_hdr_format = "Host: %s\r\n";
+static const char *requestlint_hdr_format = "GET %s HTTP/1.0\r\n";
 
 sem_t mutex;
 
@@ -103,9 +105,10 @@ void proxy(int connfd)
 	 * clientfd : proxy acting as client to server running on host
 	 */
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    char request[MAXLINE];
-    //char host[MAXLINE], port[MAXLINE], path[MAXLINE];
-    char * host, port, path;
+    char request[MAXLINE], other_hdr[MAXLINE], host_hdr[MAXLINE];
+    char host[MAXLINE], path[MAXLINE], portstr[MAXLINE];
+    int port;
+    //char *host, *port, *path;
     /* rio from server, rio from client */
     rio_t rio_server, rio_client; 
     int clientfd;
@@ -116,11 +119,12 @@ void proxy(int connfd)
 	Rio_readlineb(&rio_client, buf, MAXLINE);
 
 	if (strcmp(buf, "") == 0)
+	{
+		clienterror(connfd, buf, "400", "Bad Request", "received blank line");
 		return;
+	}
 
 	sscanf(buf, "%s %s %s", method, uri, version);
-	char *default_ver = "HTTP/1.0";
-    memcpy(version, default_ver, strlen(default_ver) + 1); // forward as HTTP/1.0 request
 
     /* only handle GET reqeust */
     if (strcasecmp(method, "GET")) 
@@ -130,44 +134,45 @@ void proxy(int connfd)
     }
 
     /* parse uri */
-    if (!parse_uri(uri, &host, &port, &path)) 
+    if (!parse_uri(uri, host, &port, path)) 
     {
 		clienterror(connfd, uri, "400", "Bad Request", "could not parse request");
 		return;
     }
+    sprintf(request, requestlint_hdr_format, uri);
 
 	if (VERBOSE)
 		printf("host: %s\nport: %s\npath: %s\n", host, port, path);
 	
-	sprintf(request, "%s %s %s\r\n", method, uri, version);
 
 	/* 1. open socket to server
 	 * establishes connection with a server running on host listening on port*/
-	clientfd = Open_clientfd(host, port);  
+	sprintf(portstr, "%d", port);
+	clientfd = Open_clientfd(host, portstr);  
 	Rio_readinitb(&rio_server, clientfd);
 
 	/* 2. read request from client and concatenate request headers */
+	sprintf(request, requestlint_hdr_format, path);
 	Rio_readlineb(&rio_client, buf, MAXLINE);
 	while (strcmp(buf, "\r\n")) 
 	{
-		if (startswith(buf, "User-Agent"))
+		if (startswith(buf, "Host"))
 		{
-			strcat(request, user_agent_hdr);
+			sprcpy(host_hdr, buf);
 		}
-		else if (startswith(buf, "Connection")) 
+		else if (!startswith(buf, "User-Agent") 
+			&& !startswith(buf, "Connection") 
+			&& !startswith(buf, "Proxy-Connection"))
 		{
-			strcat(request, conn_hdr);
-		}
-		else if (startswith(buf, "Proxy-Connection"))
-		{
-			strcat(request, proxy_hdr);
-		}
-		else
-		{
-			strcat(request, buf);
+			strcat(other_hdr, buf);
 		}
 		Rio_readlineb(&rio_client, buf, MAXLINE); // read next line
 	}
+
+	if (strlen(host_hdr) == 0)
+		sprintf(host_hdr, host_hdr_format, host);
+
+	sprintf(request, "%s%s%s%s%s%s", host_hdr, user_agent_hdr, other_hdr, proxy_hdr, conn_hdr, "/r/n");
 
 	/* 3-1. if request object is in cache, just resend it END */
 
@@ -220,29 +225,38 @@ void read_requesthdrs(rio_t *rp)
  *             http://{host}/{path}
  */
 /* $begin parse_uri */
-int parse_uri(char *uri, char **host, char **port, char **path) 
+int parse_uri(char *uri, char *host, int *portp, char *path)
 {
-    char *ptr = uri;
-    char *saveptr;
+	*portp = 80; // default port
+    char *ptr, *ptr2;
 
     if (startswith(ptr, "http://"))
     	ptr += 7;
+    /* here: ptr points to start of host name */
 
-    *host = strtok_r(ptr, "/", &saveptr);
-    *path = strtok_r(NULL, "/", &saveptr);
+    ptr2 = strstr(ptr, ":");
+    if (!ptr2) /* port mumber is specified */
+    {
+    	*ptr2 = '\0'; // replace '/' with '\0'
+    	sscanf(ptr, "%s", host);
+    	sscanf(ptr2 + 1, "%d%s", portp, path);
+    }
 
-    strtok_r(*host, ":", &saveptr);
-    *port = strtok_r(NULL, ":", &saveptr);
-
-    if ((*host == NULL) || (*path == NULL))
-    	return 0;
-
-    /* prepend path with '/' for HTTP request */
-    char *prefix = "/";
-    size_t len = strlen(prefix);
-    memmove(*path + len, *path, strlen(*path) + 1);
-    memcpy(*path, prefix, len);
-
+    else /* use default port 80 */
+    {
+    	ptr2 = strstr(ptr, "/");
+    	if (!ptr2) /* path exists */
+    	{
+    		*ptr2 = '\0';
+    		sscanf(ptr, "%s", host);
+    		*ptr2 = '/';
+    		sscanf(ptr2, "%s", path);
+    	}
+    	else
+    	{
+    		sscanf(ptr, "%s", host);
+    	}
+    }
     return 1;
 }
 
@@ -251,7 +265,7 @@ int parse_uri(char *uri, char **host, char **port, char **path)
  */
 int startswith(const char *target, const char *prefix)
 {
-	int prefixlen = strlen(prefix)
+	int prefixlen = strlen(prefix);
 	return (!strncmp(target, prefix, prefixlen));
 }
 
@@ -267,11 +281,11 @@ void clienterror(int fd, char *cause, char *errnum,
     char buf[MAXLINE], body[MAXBUF];
 
     /* Build the HTTP response body */
-    sprintf(body, "<html><title>Tiny Error</title>");
+    sprintf(body, "<html><title>Proxy Error</title>");
     sprintf(body, "%s<body bgcolor=""ffffff"">\r\n", body);
     sprintf(body, "%s%s: %s\r\n", body, errnum, shortmsg);
     sprintf(body, "%s<p>%s: %s\r\n", body, longmsg, cause);
-    sprintf(body, "%s<hr><em>The Tiny Web server</em>\r\n", body);
+    sprintf(body, "%s<hr><em>The Proxy Web server</em>\r\n", body);
 
     /* Print the HTTP response */
     sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
