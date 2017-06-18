@@ -28,6 +28,7 @@ static const char *conn_hdr = "Connection: close\r\n";
 static const char *proxy_hdr = "Proxy-Connection: close\r\n";
 static const char *host_hdr_format = "Host: %s\r\n";
 static const char *requestlint_hdr_format = "GET %s HTTP/1.0\r\n";
+static const char *eof_hdr = "\r\n";
 
 sem_t mutex;
 
@@ -171,7 +172,7 @@ void proxy(int connfd)
 	if (strlen(host_hdr) == 0)
 		sprintf(host_hdr, host_hdr_format, host);
 
-	sprintf(request, "%s%s%s%s%s%s%s", request_hdr, host_hdr, user_agent_hdr, other_hdr, proxy_hdr, conn_hdr, "/r/n");
+	sprintf(request, "%s%s%s%s%s%s%s", request_hdr, host_hdr, conn_hdr, proxy_hdr, user_agent_hdr, other_hdr, eof_hdr);
 
 	if (VERBOSE)
 	{
