@@ -37,8 +37,8 @@ int main(int argc, char **argv)
 {
     int listenfd, *connfdp;
     char hostname[MAXLINE], port[MAXLINE];
-    socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    socklen_t clientlen = sizeof(clinetaddr);
     pthread_t tid;
 
 	Signal(SIGPIPE, SIG_IGN); /* ignore SIGPIPE signal */
@@ -60,7 +60,6 @@ int main(int argc, char **argv)
     while (1) 
     {
     	/* connection socekt descriptor */
-		clientlen = sizeof(clientaddr);
 		connfdp = Malloc(sizeof(int));
 		*connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		
@@ -201,6 +200,7 @@ void proxy(int connfd)
 		printf("Proxy forwarded %d bytes server resposne to client\n", sum);
 	}
 
+	Close(clientfd);
 }
 /* $end doit */
 
