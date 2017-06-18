@@ -20,6 +20,7 @@ void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char **host, char **port, char **path);
 void clienterror(int fd, char *cause, char *errnum, 
 		 char *shortmsg, char *longmsg);
+int startswith(const char *target, const char *prefix);
 
 
 /* You won't lose style points for including this long line in your code */
@@ -103,7 +104,8 @@ void proxy(int connfd)
 	 */
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char request[MAXLINE];
-    char host[MAXLINE], port[MAXLINE], path[MAXLINE];
+    //char host[MAXLINE], port[MAXLINE], path[MAXLINE];
+    char * host, port, path;
     /* rio from server, rio from client */
     rio_t rio_server, rio_client; 
     int clientfd;
@@ -117,7 +119,8 @@ void proxy(int connfd)
 		return;
 
 	sscanf(buf, "%s %s %s", method, uri, version);
-    memcpy(version, "HTTP/1.0"); // forward as HTTP/1.0 request
+	char *default_ver = "HTTP/1.0";
+    memcpy(version, default_ver, strlen(default_ver) + 1); // forward as HTTP/1.0 request
 
     /* only handle GET reqeust */
     if (strcasecmp(method, "GET")) 
@@ -167,10 +170,7 @@ void proxy(int connfd)
 	}
 
 	/* 3-1. if request object is in cache, just resend it END */
-	if (CACHE_ENABLE)
-	{
-		continue;
-	}
+
 
 	/* 3-2. send request to server */
 	request_len = strlen(request);
@@ -231,7 +231,7 @@ int parse_uri(char *uri, char **host, char **port, char **path)
     *host = strtok_r(ptr, "/", &saveptr);
     *path = strtok_r(NULL, "/", &saveptr);
 
-    strtok_r(host, ":", &saveptr);
+    strtok_r(*host, ":", &saveptr);
     *port = strtok_r(NULL, ":", &saveptr);
 
     if ((*host == NULL) || (*path == NULL))
@@ -252,7 +252,7 @@ int parse_uri(char *uri, char **host, char **port, char **path)
 int startswith(const char *target, const char *prefix)
 {
 	int prefixlen = strlen(prefix)
-	return !strncmp(target, prefix, prefixlen);
+	return (!strncmp(target, prefix, prefixlen));
 }
 
 /* $end parse_uri */
