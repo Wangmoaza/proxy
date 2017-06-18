@@ -16,7 +16,6 @@
 /* function prototypes */
 void *thread(void *vargp);
 void proxy(int fd);
-void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *host, int *portp, char *path);
 void clienterror(int fd, char *cause, char *errnum, 
 		 char *shortmsg, char *longmsg);
@@ -105,7 +104,7 @@ void proxy(int connfd)
 	 * clientfd : proxy acting as client to server running on host
 	 */
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    char request[MAXLINE], other_hdr[MAXLINE], host_hdr[MAXLINE];
+    char request[MAXLINE], other_hdr[MAXLINE], host_hdr[MAXLINE], request_hdr[MAXLINE];
     char host[MAXLINE], path[MAXLINE], portstr[MAXLINE];
     int port;
     //char *host, *port, *path;
@@ -129,7 +128,7 @@ void proxy(int connfd)
     /* only handle GET reqeust */
     if (strcasecmp(method, "GET")) 
     { 
-        clienterror(connfd, method, "501", "Not Implemented", NULL);
+        clienterror(connfd, method, "501", "Not Implemented", "only GET is implemented");
         return;
     }
 
@@ -139,12 +138,10 @@ void proxy(int connfd)
 		clienterror(connfd, uri, "400", "Bad Request", "could not parse request");
 		return;
     }
-    sprintf(request, requestlint_hdr_format, uri);
 
 	if (VERBOSE)
 		printf("host: %s\nport: %d\npath: %s\n", host, port, path);
 	
-
 	/* 1. open socket to server
 	 * establishes connection with a server running on host listening on port*/
 	sprintf(portstr, "%d", port);
@@ -152,7 +149,7 @@ void proxy(int connfd)
 	Rio_readinitb(&rio_server, clientfd);
 
 	/* 2. read request from client and concatenate request headers */
-	sprintf(request, requestlint_hdr_format, path);
+	sprintf(request_hdr, requestlint_hdr_format, path);
 	Rio_readlineb(&rio_client, buf, MAXLINE);
 	while (strcmp(buf, "\r\n")) 
 	{
@@ -172,7 +169,13 @@ void proxy(int connfd)
 	if (strlen(host_hdr) == 0)
 		sprintf(host_hdr, host_hdr_format, host);
 
-	sprintf(request, "%s%s%s%s%s%s", host_hdr, user_agent_hdr, other_hdr, proxy_hdr, conn_hdr, "/r/n");
+	sprintf(request, "%s%s%s%s%s%s%s", request_hdr, host_hdr, user_agent_hdr, other_hdr, proxy_hdr, conn_hdr, "/r/n");
+
+	if (VERBOSE)
+	{
+		printf("***This is the requst read from client***/n");
+		printf(request);
+	}
 
 	/* 3-1. if request object is in cache, just resend it END */
 
@@ -197,25 +200,6 @@ void proxy(int connfd)
 
 }
 /* $end doit */
-
-/*
- * read_requesthdrs - read HTTP request headers
- */
-/* $begin read_requesthdrs */
-void read_requesthdrs(rio_t *rp) 
-{
-    char buf[MAXLINE];
-
-    Rio_readlineb(rp, buf, MAXLINE);
-    printf("%s", buf);
-    while(strcmp(buf, "\r\n")) 
-    {
-		Rio_readlineb(rp, buf, MAXLINE);
-		printf("%s", buf);
-    }
-    return;
-}
-/* $end read_requesthdrs */
 
 /*
  * parse_uri - parse URI into host, port, path
