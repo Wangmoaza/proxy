@@ -156,6 +156,8 @@ void proxy(int connfd)
 		if (startswith(buf, "Host"))
 		{
 			strcpy(host_hdr, buf);
+			if (VERBOSE)
+				printf("Host specified: %s", host_hdr);
 		}
 		else if (!startswith(buf, "User-Agent") 
 			&& !startswith(buf, "Connection") 
@@ -173,8 +175,8 @@ void proxy(int connfd)
 
 	if (VERBOSE)
 	{
-		printf("***This is the requst read from client***/n");
-		printf(request);
+		printf("***This is the requst read from client***\n");
+		printf("%s", request);
 	}
 
 	/* 3-1. if request object is in cache, just resend it END */
