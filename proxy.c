@@ -142,7 +142,7 @@ void proxy(int connfd)
     sprintf(request, requestlint_hdr_format, uri);
 
 	if (VERBOSE)
-		printf("host: %s\nport: %s\npath: %s\n", host, port, path);
+		printf("host: %s\nport: %d\npath: %s\n", host, port, path);
 	
 
 	/* 1. open socket to server
@@ -158,7 +158,7 @@ void proxy(int connfd)
 	{
 		if (startswith(buf, "Host"))
 		{
-			sprcpy(host_hdr, buf);
+			strcpy(host_hdr, buf);
 		}
 		else if (!startswith(buf, "User-Agent") 
 			&& !startswith(buf, "Connection") 
@@ -229,7 +229,8 @@ int parse_uri(char *uri, char *host, int *portp, char *path)
 {
 	*portp = 80; // default port
     char *ptr, *ptr2;
-
+    ptr = uri;
+    
     if (startswith(ptr, "http://"))
     	ptr += 7;
     /* here: ptr points to start of host name */
