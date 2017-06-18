@@ -236,7 +236,7 @@ int parse_uri(char *uri, char *host, int *portp, char *path)
     /* here: ptr points to start of host name */
 
     ptr2 = strstr(ptr, ":");
-    if (!ptr2) /* port mumber is specified */
+    if (ptr2) /* port mumber is specified */
     {
     	*ptr2 = '\0'; // replace '/' with '\0'
     	sscanf(ptr, "%s", host);
@@ -246,7 +246,7 @@ int parse_uri(char *uri, char *host, int *portp, char *path)
     else /* use default port 80 */
     {
     	ptr2 = strstr(ptr, "/");
-    	if (!ptr2) /* path exists */
+    	if (ptr2) /* path exists */
     	{
     		*ptr2 = '\0';
     		sscanf(ptr, "%s", host);
