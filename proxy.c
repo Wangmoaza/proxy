@@ -182,8 +182,11 @@ void proxy(int connfd)
 	{	
 		pthread_rwlock_rdlock(&rwlock);
 		
-		if (in_cache(host, path, buf));
+		if (in_cache(host, path, buf))
+		{
+			if (VERBOSE) printf("Item is in cache\n");
 			Rio_writen(connfd, buf, strlen(buf)); 
+		}
 		
 		pthread_rwlock_unlock(&rwlock);
 		return;
@@ -203,8 +206,7 @@ void proxy(int connfd)
 		if (startswith(buf, "Host"))
 		{
 			strcpy(host_hdr, buf);
-			if (VERBOSE)
-				printf("Host specified: %s", host_hdr);
+			if (VERBOSE) printf("Host specified: %s", host_hdr);
 		}
 		else if (!startswith(buf, "User-Agent") 
 			&& !startswith(buf, "Connection") 
@@ -247,10 +249,10 @@ void proxy(int connfd)
 		pthread_rwlock_wrlock(&rwlock);
 		allocate(host, path, cache_buf, sum);
 		pthread_rwlock_unlock(&rwlock);
+		if (VERBOSE) printf("Cache allocated %d bytes\n", sum);
 	}
 
-	if (VERBOSE)
-		printf("Proxy forwarded %d bytes server resposne to client\n", sum);
+	if (VERBOSE) printf("Proxy forwarded %d bytes server resposne to client\n", sum);
 
 	cache_check();
 	Close(clientfd);
