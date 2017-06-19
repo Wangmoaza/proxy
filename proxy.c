@@ -6,12 +6,13 @@
 #include <stdio.h>
 #include "csapp.h"
 #include "pthread.h"
+#include "cache.h"
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 #define VERBOSE 1
-#define CACHE_ENABLE 0
+#define CACHE_ENABLE 1
 
 /* function prototypes */
 void *thread(void *vargp);
@@ -30,8 +31,9 @@ static const char *host_hdr_format = "Host: %s\r\n";
 static const char *requestlint_hdr_format = "GET %s HTTP/1.0\r\n";
 static const char *eof_hdr = "\r\n";
 
-sem_t mutex;
-
+/* global variables */
+pthread_rwlock_t rwlock;
+Cache cache = {NULL, NULL, 0, 0};
 
 int main(int argc, char **argv) 
 {
@@ -42,10 +44,16 @@ int main(int argc, char **argv)
     pthread_t tid;
 
 	Signal(SIGPIPE, SIG_IGN); /* ignore SIGPIPE signal */
-	Sem_init(&mutex, 0, 1); /* initialize mutex */
+	
+	/* initialize reader-writer lock */
+	if (!pthread_rwlock_init(&rwlock, NULL))
+		printf("Read-Write Lock initialization failed\n");
 
     if (VERBOSE)
+    {
     	printf("Server starting...\n");
+    	cache_check();
+    }
 
     /* Check command line args */
     if (argc != 2) 
@@ -106,15 +114,15 @@ void proxy(int connfd)
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char request[MAXLINE], other_hdr[MAXLINE], host_hdr[MAXLINE], request_hdr[MAXLINE];
     char host[MAXLINE], path[MAXLINE], portstr[MAXLINE];
+    char cache_buf[MAXLINE];
     int port;
-    //char *host, *port, *path;
     /* rio from server, rio from client */
     rio_t rio_server, rio_client; 
     int clientfd;
     int request_len, n, sum;
 
     if (VERBOSE) printf("Proxy thread starting...\n");
-    
+
     /* read and parse request line */
 	Rio_readinitb(&rio_client, connfd); // need to forward it to server
 	Rio_readlineb(&rio_client, buf, MAXLINE);
@@ -146,7 +154,16 @@ void proxy(int connfd)
 
 	if (VERBOSE)
 		printf("host: %s\nport: %d\npath: %s\n", host, port, path);
-	
+
+	/* 3-1. if request object is in cache, just resend it END */
+	pthread_rwlock_rdlock(&rwlock);
+	if (CACHE_ENABLE && in_cache(host, path, response)) 
+	{		
+		Rio_writen(connfd, response, strlen(response)); 
+		return;
+	}
+	pthread_rwlock_unlock(&rwlock);
+
 	/* 1. open socket to server
 	 * establishes connection with a server running on host listening on port*/
 	sprintf(portstr, "%d", port);
@@ -184,9 +201,6 @@ void proxy(int connfd)
 		printf("%s", request);
 	}
 
-	/* 3-1. if request object is in cache, just resend it END */
-
-
 	/* 3-2. send request to server */
 	request_len = strlen(request);
 	Rio_writen(clientfd, request, request_len);
@@ -197,14 +211,23 @@ void proxy(int connfd)
 	while ((n = Rio_readlineb(&rio_server, buf, MAXLINE)) > 0)
 	{
 		sum += n;
+		if (sum <= MAX_OBJECT_SIZE)
+			strcat(cache_buf, buf);
 		Rio_writen(connfd, buf, n);
 	}
 
-	if (VERBOSE)
+	/* if cacheable, allocate in cache */
+	if (CACHE_ENABLE && sum <= MAX_OBJECT_SIZE) 
 	{
-		printf("Proxy forwarded %d bytes server resposne to client\n", sum);
+		pthread_rwlock_wrlock(&rwlock);
+		allocate(host, path, cache_buf, sum);
+		pthread_rwlock_unlock(&rwlock);
 	}
 
+	if (VERBOSE)
+		printf("Proxy forwarded %d bytes server resposne to client\n", sum);
+
+	cache_check();
 	Close(clientfd);
 }
 /* $end doit */

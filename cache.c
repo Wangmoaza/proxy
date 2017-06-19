@@ -99,7 +99,9 @@ int cache_check()
 	Block *curr;
 
 	if (cache.count == 0)
+	{
 		return 1;
+	}
 
 	if ((cache.count == 1) && (cache.head != cache.tail))
 	{
@@ -135,4 +137,5 @@ int cache_check()
 		return 0;			
 	}
 
+	return 1;
 }
