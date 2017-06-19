@@ -185,11 +185,11 @@ void proxy(int connfd)
 		if (in_cache(host, path, buf))
 		{
 			if (VERBOSE) printf("Item is in cache\n");
-			Rio_writen(connfd, buf, strlen(buf)); 
+			Rio_writen(connfd, buf, strlen(buf));
+			pthread_rwlock_unlock(&rwlock);
+			return; 
 		}
-		
 		pthread_rwlock_unlock(&rwlock);
-		return;
 	}
 
 	/* 1. open socket to server
