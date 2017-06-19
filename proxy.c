@@ -11,7 +11,7 @@
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 #define VERBOSE 1
-#define CACHE_ENABLE 0
+#define CACHE_ENABLE 1
 
 typedef struct _Block {
 	struct _Block *prev;
