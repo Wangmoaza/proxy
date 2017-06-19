@@ -13,21 +13,6 @@
 #define VERBOSE 1
 #define CACHE_ENABLE 0
 
-/* function prototypes */
-void *thread(void *vargp);
-void proxy(int fd);
-int parse_uri(char *uri, char *host, int *portp, char *path);
-void clienterror(int fd, char *cause, char *errnum, 
-		 char *shortmsg, char *longmsg);
-int startswith(const char *target, const char *prefix);
-
-/* cache functions */
-int in_cache(char *host, char *path, char *response);
-void evict(int new_block_size);
-void allocate(char *host, char *path, char *buf, int bufsize);
-void to_head(Block *b);
-int cache_check();
-
 typedef struct _Block {
 	struct _Block *prev;
 	struct _Block *next;
@@ -44,7 +29,6 @@ typedef struct _Cache {
 	int count;
 } Cache;
 
-
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 static const char *conn_hdr = "Connection: close\r\n";
@@ -56,6 +40,21 @@ static const char *eof_hdr = "\r\n";
 /* global variables */
 pthread_rwlock_t rwlock;
 Cache cache = {NULL, NULL, 0, 0};
+
+/* function prototypes */
+void *thread(void *vargp);
+void proxy(int fd);
+int parse_uri(char *uri, char *host, int *portp, char *path);
+void clienterror(int fd, char *cause, char *errnum, 
+		 char *shortmsg, char *longmsg);
+int startswith(const char *target, const char *prefix);
+
+/* cache functions */
+int in_cache(char *host, char *path, char *response);
+void evict(int new_block_size);
+void allocate(char *host, char *path, char *buf, int bufsize);
+void to_head(Block *b);
+int cache_check();
 
 int main(int argc, char **argv) 
 {
