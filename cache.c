@@ -6,7 +6,7 @@ int in_cache(char *host, char *path, char *response)
 	for (; curr != NULL; curr = curr->next) 
 	{
 		/* use host, path as key */
-		if (!strcmp(curr->host, host) && !strcmp(curr->uri, uri)) 
+		if (!strcmp(curr->host, host) && !strcmp(curr->path, path)) 
 		{
 			strncpy(response, curr->object, curr->size);
 			to_head(curr); /* recently accessed block is in the head */
@@ -16,9 +16,9 @@ int in_cache(char *host, char *path, char *response)
 	return 0; // not found
 }
 
-void evict(size_t new_block_size)
+void evict(int new_block_size)
 {
-	size_t victim_size, temp_cache_size;
+	int victim_size, temp_cache_size;
 	Block *curr = cache.tail;
 	victim_size = curr->size;
 
@@ -40,10 +40,10 @@ void evict(size_t new_block_size)
 	return;
 }
 
-void allocate(char *host, char *path, char *buf, size_t *bufsize)
+void allocate(char *host, char *path, char *buf, int bufsize)
 {
 	/* make room for new block */
-	size_t temp_cache_size = cache.size + bufsize;
+	int temp_cache_size = cache.size + bufsize;
 	if (temp_cache_size > MAX_CACHE_SIZE) 
 		evict(bufsize);
 
@@ -53,7 +53,7 @@ void allocate(char *host, char *path, char *buf, size_t *bufsize)
 	b->next = NULL;
 	b->size = bufsize;
 	b->host = Malloc(sizeof(char) * strlen(host));
-	b->path = Malloc(sizeof(char) * strlen(uri));
+	b->path = Malloc(sizeof(char) * strlen(path));
 	b->object = Malloc(sizeof(char) * bufsize);
 	strcpy(b->host, host);
 	strcpy(b->path, path);

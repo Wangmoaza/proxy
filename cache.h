@@ -9,7 +9,7 @@
 typedef struct _Block {
 	struct _Block *prev;
 	struct _Block *next;
-	size_t size;
+	int size;
 	char *host;
 	char *path;
 	char object[MAX_OBJECT_SIZE];
@@ -18,16 +18,16 @@ typedef struct _Block {
 typedef struct _Cache {
 	struct _Block *head;
 	struct _Block *tail;
-	size_t size;
-	size_t count;
+	int size;
+	int count;
 } Cache;
 
 /* Global variable */
 extern Cache cache;
 
 int in_cache(char *host, char *path, char *response);
-void evict(size_t new_block_size);
-void allocate(char *host, char *path, char *buf, size_t *bufsize);
+void evict(int new_block_size);
+void allocate(char *host, char *path, char *buf, int bufsize);
 void to_head(Block *b);
 int cache_check();
 

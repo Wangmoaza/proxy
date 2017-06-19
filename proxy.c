@@ -223,7 +223,7 @@ void proxy(int connfd)
 	if (CACHE_ENABLE && sum <= MAX_OBJECT_SIZE) 
 	{
 		pthread_rwlock_wrlock(&rwlock);
-		allocate(host, path, cache_buf, &sum);
+		allocate(host, path, cache_buf, sum);
 		pthread_rwlock_unlock(&rwlock);
 	}
 
