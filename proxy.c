@@ -136,7 +136,7 @@ void proxy(int connfd)
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char request[MAXLINE], other_hdr[MAXLINE], host_hdr[MAXLINE], request_hdr[MAXLINE];
     char host[MAXLINE], path[MAXLINE], portstr[MAXLINE];
-    char cache_buf[MAXLINE];
+    char cache_buf[MAX_OBJECT_SIZE];
     int port;
     /* rio from server, rio from client */
     rio_t rio_server, rio_client; 
