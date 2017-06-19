@@ -12,7 +12,7 @@ typedef struct _Block {
 	size_t size;
 	char *host;
 	char *path;
-	char[MAX_OBJECT_SIZE] object;
+	char object[MAX_OBJECT_SIZE];
 } Block;
 
 typedef struct _Cache {

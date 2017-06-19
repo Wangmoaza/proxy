@@ -156,13 +156,16 @@ void proxy(int connfd)
 		printf("host: %s\nport: %d\npath: %s\n", host, port, path);
 
 	/* 3-1. if request object is in cache, just resend it END */
-	pthread_rwlock_rdlock(&rwlock);
-	if (CACHE_ENABLE && in_cache(host, path, response)) 
-	{		
-		Rio_writen(connfd, response, strlen(response)); 
+	if (CACHE_ENABLE) 
+	{	
+		pthread_rwlock_rdlock(&rwlock);
+		
+		if (in_cache(host, path, buf));
+			Rio_writen(connfd, buf, strlen(buf)); 
+		
+		pthread_rwlock_unlock(&rwlock);
 		return;
 	}
-	pthread_rwlock_unlock(&rwlock);
 
 	/* 1. open socket to server
 	 * establishes connection with a server running on host listening on port*/
@@ -220,7 +223,7 @@ void proxy(int connfd)
 	if (CACHE_ENABLE && sum <= MAX_OBJECT_SIZE) 
 	{
 		pthread_rwlock_wrlock(&rwlock);
-		allocate(host, path, cache_buf, sum);
+		allocate(host, path, cache_buf, &sum);
 		pthread_rwlock_unlock(&rwlock);
 	}
 
