@@ -45,7 +45,7 @@ int main(int argc, char **argv)
 	Sem_init(&mutex, 0, 1); /* initialize mutex */
 
     if (VERBOSE)
-    	printf("Server starting\n");
+    	printf("Server starting...\n");
 
     /* Check command line args */
     if (argc != 2) 
@@ -113,12 +113,15 @@ void proxy(int connfd)
     int clientfd;
     int request_len, n, sum;
 
+    if (VERBOSE) printf("Proxy thread starting...\n");
+    
     /* read and parse request line */
 	Rio_readinitb(&rio_client, connfd); // need to forward it to server
 	Rio_readlineb(&rio_client, buf, MAXLINE);
 
 	if (strcmp(buf, "") == 0)
 	{
+		if (VERBOSE) printf("Empty line\n");
 		clienterror(connfd, buf, "400", "Bad Request", "received blank line");
 		return;
 	}
@@ -127,7 +130,8 @@ void proxy(int connfd)
 
     /* only handle GET reqeust */
     if (strcasecmp(method, "GET")) 
-    { 
+    {
+    	if (VERBOSE) printf("Not GET\n");
         clienterror(connfd, method, "501", "Not Implemented", "only GET is implemented");
         return;
     }
@@ -135,6 +139,7 @@ void proxy(int connfd)
     /* parse uri */
     if (!parse_uri(uri, host, &port, path)) 
     {
+    	if (VERBOSE) printf("Could not parse\n");
 		clienterror(connfd, uri, "400", "Bad Request", "could not parse request");
 		return;
     }
