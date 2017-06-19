@@ -42,12 +42,13 @@ int main(int argc, char **argv)
     struct sockaddr_storage clientaddr;
     socklen_t clientlen = sizeof(clientaddr);
     pthread_t tid;
+    int lock_err;
 
 	Signal(SIGPIPE, SIG_IGN); /* ignore SIGPIPE signal */
 	
 	/* initialize reader-writer lock */
-	if (!pthread_rwlock_init(&rwlock, NULL))
-		printf("Read-Write Lock initialization failed\n");
+	if ((lock_err = pthread_rwlock_init(&rwlock, NULL)) != 0)
+		printf("Read-Write Lock initialization failed errno: %d\n", lock_err);
 
     if (VERBOSE)
     {
