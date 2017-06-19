@@ -12,7 +12,7 @@
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 #define VERBOSE 1
-#define CACHE_ENABLE 1
+#define CACHE_ENABLE 0
 
 /* function prototypes */
 void *thread(void *vargp);
