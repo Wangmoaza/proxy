@@ -52,9 +52,6 @@ void allocate(char *host, char *path, char *buf, int bufsize)
 	b->prev = NULL;
 	b->next = NULL;
 	b->size = bufsize;
-	b->host = Malloc(sizeof(char) * strlen(host));
-	b->path = Malloc(sizeof(char) * strlen(path));
-	b->object = Malloc(sizeof(char) * bufsize);
 	strcpy(b->host, host);
 	strcpy(b->path, path);
 	strncpy(b->object, buf, bufsize);

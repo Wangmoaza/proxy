@@ -10,8 +10,8 @@ typedef struct _Block {
 	struct _Block *prev;
 	struct _Block *next;
 	int size;
-	char *host;
-	char *path;
+	char host[MAXLINE];
+	char path[MAXLINE];
 	char object[MAX_OBJECT_SIZE];
 } Block;
 
